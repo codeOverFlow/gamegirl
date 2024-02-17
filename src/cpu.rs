@@ -94,7 +94,7 @@ impl Cpu {
         }
     }
 
-    fn ldrr(&mut self, to: LdrrTarget, from: LdrrTarget) {
+    fn ldrr(&mut self, to: LdrrTarget, from: LdrrTarget, memory: &mut [u8]) {
         let value = match from {
             LdrrTarget::A => self.registers.a as u16,
             LdrrTarget::B => self.registers.b as u16,
@@ -103,7 +103,7 @@ impl Cpu {
             LdrrTarget::E => self.registers.e as u16,
             LdrrTarget::H => self.registers.h as u16,
             LdrrTarget::L => self.registers.l as u16,
-            LdrrTarget::HL => self.registers.hl(),
+            LdrrTarget::HL => memory[self.registers.hl() as usize] as u16,
         };
 
         match to {
@@ -114,7 +114,41 @@ impl Cpu {
             LdrrTarget::E => self.registers.e = (value & 0x00FF) as u8,
             LdrrTarget::H => self.registers.h = (value & 0x00FF) as u8,
             LdrrTarget::L => self.registers.l = (value & 0x00FF) as u8,
-            LdrrTarget::HL => self.registers.set_hl(value as u16),
+            LdrrTarget::HL => memory[self.registers.hl() as usize] = (value & 0x00FF) as u8,
+        };
+    }
+
+    fn lda(&mut self, from: LdaTarget, memory: &mut [u8]) {
+        let value = match from {
+            LdaTarget::A => self.registers.a as u16,
+            LdaTarget::B => self.registers.b as u16,
+            LdaTarget::C => self.registers.c as u16,
+            LdaTarget::D => self.registers.d as u16,
+            LdaTarget::E => self.registers.e as u16,
+            LdaTarget::H => self.registers.h as u16,
+            LdaTarget::L => self.registers.l as u16,
+            LdaTarget::BC => memory[self.registers.bc() as usize] as u16,
+            LdaTarget::DE => memory[self.registers.de() as usize] as u16,
+            LdaTarget::HL => memory[self.registers.hl() as usize] as u16,
+            LdaTarget::Addr(addr) => memory[addr as usize] as u16,
+            LdaTarget::Value(value) => value as u16,
+        };
+
+        self.registers.a = (value & 0x00FF) as u8;
+    }
+
+    fn ldfa(&mut self, to: LdfaTarget, memory: &mut [u8]) {
+        match to {
+            LdfaTarget::A => self.registers.a = self.registers.a,
+            LdfaTarget::B => self.registers.b = self.registers.a,
+            LdfaTarget::C => self.registers.c = self.registers.a,
+            LdfaTarget::D => self.registers.d = self.registers.a,
+            LdfaTarget::E => self.registers.e = self.registers.a,
+            LdfaTarget::H => self.registers.h = self.registers.a,
+            LdfaTarget::BC => memory[self.registers.bc() as usize] = self.registers.a,
+            LdfaTarget::DE => memory[self.registers.de() as usize] = self.registers.a,
+            LdfaTarget::HL => memory[self.registers.hl() as usize] = self.registers.a,
+            LdfaTarget::Addr(addr) => memory[addr as usize] = self.registers.a,
         };
     }
 
@@ -140,11 +174,11 @@ impl Cpu {
         value += (memory[self.sp] as u16) << 8;
     }
 
-    fn add(&mut self, target: AddTarget) {
+    fn add(&mut self, target: AddTarget, memory: &mut [u8]) {
         match target {
             AddTarget::HL => {
-                let value = self.registers.hl();
-                let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
+                let value = memory[self.registers.hl() as usize];
+                let (new_value, overflow) = self.registers.a.overflowing_add(value);
                 let mut flags = CpuFlags::empty();
 
                 if overflow {
@@ -162,7 +196,6 @@ impl Cpu {
                 self.registers.a = new_value;
             }
             AddTarget::Value(value) => {
-                let value = self.registers.hl();
                 let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
 
@@ -211,10 +244,11 @@ impl Cpu {
         }
     }
 
-    fn adc(&mut self, target: AddTarget) {
+    fn adc(&mut self, target: AddTarget, memory: &mut [u8]) {
         match target {
             AddTarget::HL => {
-                let value = self.registers.hl() + self.registers.f.contains(CpuFlags::CARRY) as u16;
+                let value = memory[self.registers.hl() as usize]
+                    + self.registers.f.contains(CpuFlags::CARRY) as u8;
                 let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
 
@@ -283,10 +317,10 @@ impl Cpu {
         }
     }
 
-    fn sub(&mut self, target: SubTarget) {
+    fn sub(&mut self, target: SubTarget, memory: &mut [u8]) {
         match target {
             SubTarget::HL => {
-                let value = self.registers.hl();
+                let value = memory[self.registers.hl() as usize];
                 let (new_value, overflow) = self.registers.a.overflowing_sub((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
@@ -299,15 +333,14 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
                 self.registers.a = new_value;
             }
             SubTarget::Value(value) => {
-                let value = self.registers.hl();
-                let (new_value, overflow) = self.registers.a.overflowing_sub((value & 0xFF) as u8);
+                let (new_value, overflow) = self.registers.a.overflowing_sub(value);
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
 
@@ -319,7 +352,7 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
@@ -348,7 +381,7 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
@@ -357,10 +390,11 @@ impl Cpu {
         }
     }
 
-    fn sbc(&mut self, target: SubTarget) {
+    fn sbc(&mut self, target: SubTarget, memory: &mut [u8]) {
         match target {
             SubTarget::HL => {
-                let value = self.registers.hl() + self.registers.f.contains(CpuFlags::CARRY) as u16;
+                let value = memory[self.registers.hl() as usize]
+                    + self.registers.f.contains(CpuFlags::CARRY) as u8;
                 let (new_value, overflow) = self.registers.a.overflowing_sub((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
@@ -373,14 +407,14 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
                 self.registers.a = new_value;
             }
             SubTarget::Value(value) => {
-                let value = value + self.registers.f.contains(CpuFlags::CARRY) as u16;
+                let value = value + self.registers.f.contains(CpuFlags::CARRY) as u8;
                 let (new_value, overflow) = self.registers.a.overflowing_sub((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
@@ -393,7 +427,7 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
@@ -424,7 +458,7 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
@@ -433,11 +467,11 @@ impl Cpu {
         }
     }
 
-    fn cp(&mut self, target: CpTarget) {
+    fn cp(&mut self, target: CpTarget, memory: &mut [u8]) {
         match target {
             CpTarget::HL => {
-                let value = self.registers.hl();
-                let (new_value, overflow) = self.registers.a.overflowing_sub((value & 0xFF) as u8);
+                let value = memory[self.registers.hl() as usize];
+                let (new_value, overflow) = self.registers.a.overflowing_sub(value);
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
 
@@ -454,7 +488,7 @@ impl Cpu {
                 }
             }
             CpTarget::Value(value) => {
-                let (new_value, overflow) = self.registers.a.overflowing_sub((value & 0xFF) as u8);
+                let (new_value, overflow) = self.registers.a.overflowing_sub(value);
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
 
@@ -556,11 +590,11 @@ impl Cpu {
         }
     }
 
-    fn and(&mut self, target: LogicTarget) {
+    fn and(&mut self, target: LogicTarget, memory: &mut [u8]) {
         match target {
             LogicTarget::HL => {
-                let value = self.registers.hl();
-                self.registers.a &= (value & 0x00FF) as u8;
+                let value = memory[self.registers.hl() as usize];
+                self.registers.a &= value;
                 let mut flag = CpuFlags::empty();
                 if self.registers.a == 0 {
                     flag |= CpuFlags::ZERO;
@@ -570,7 +604,7 @@ impl Cpu {
                 self.registers.f = flag;
             }
             LogicTarget::Value(value) => {
-                self.registers.a &= (value & 0x00FF) as u8;
+                self.registers.a &= value;
                 let mut flag = CpuFlags::empty();
                 if self.registers.a == 0 {
                     flag |= CpuFlags::ZERO;
@@ -603,11 +637,11 @@ impl Cpu {
         }
     }
 
-    fn or(&mut self, target: LogicTarget) {
+    fn or(&mut self, target: LogicTarget, memory: &mut [u8]) {
         match target {
             LogicTarget::HL => {
-                let value = self.registers.hl();
-                self.registers.a |= (value & 0x00FF) as u8;
+                let value = memory[self.registers.hl() as usize];
+                self.registers.a |= value;
                 let mut flag = CpuFlags::empty();
                 if self.registers.a == 0 {
                     flag |= CpuFlags::ZERO;
@@ -616,7 +650,7 @@ impl Cpu {
                 self.registers.f = flag;
             }
             LogicTarget::Value(value) => {
-                self.registers.a |= (value & 0x00FF) as u8;
+                self.registers.a |= value;
                 let mut flag = CpuFlags::empty();
                 if self.registers.a == 0 {
                     flag |= CpuFlags::ZERO;
@@ -647,11 +681,11 @@ impl Cpu {
         }
     }
 
-    fn xor(&mut self, target: LogicTarget) {
+    fn xor(&mut self, target: LogicTarget, memory: &mut [u8]) {
         match target {
             LogicTarget::HL => {
-                let value = self.registers.hl();
-                self.registers.a ^= (value & 0x00FF) as u8;
+                let value = memory[self.registers.hl() as usize];
+                self.registers.a ^= value;
                 let mut flag = CpuFlags::empty();
                 if self.registers.a == 0 {
                     flag |= CpuFlags::ZERO;
@@ -660,7 +694,7 @@ impl Cpu {
                 self.registers.f = flag;
             }
             LogicTarget::Value(value) => {
-                self.registers.a ^= (value & 0x00FF) as u8;
+                self.registers.a ^= value;
                 let mut flag = CpuFlags::empty();
                 if self.registers.a == 0 {
                     flag |= CpuFlags::ZERO;
@@ -719,7 +753,13 @@ impl Cpu {
                 self.ldn(target, value);
             }
             Instruction::LDRR(to, from) => {
-                self.ldrr(to, from);
+                self.ldrr(to, from, memory);
+            }
+            Instruction::LDA(from) => {
+                self.lda(from, memory);
+            }
+            Instruction::LDFA(to) => {
+                self.ldfa(to, memory);
             }
             Instruction::PUSH(target) => {
                 self.push(target, memory);
@@ -728,7 +768,7 @@ impl Cpu {
                 self.pop(target, memory);
             }
             Instruction::ADD(target) => {
-                self.add(target);
+                self.add(target, memory);
             }
             Instruction::ADC(target) => {
                 self.adc(target);
@@ -746,13 +786,13 @@ impl Cpu {
                 self.inc(target);
             }
             Instruction::AND(target) => {
-                self.and(target);
+                self.and(target, memory);
             }
             Instruction::OR(target) => {
-                self.or(target);
+                self.or(target, memory);
             }
             Instruction::XOR(target) => {
-                self.xor(target);
+                self.xor(target, memory);
             }
             Instruction::ADD16(target) => {
                 self.add_hl(target);
@@ -765,6 +805,8 @@ impl Cpu {
 pub enum Instruction {
     LDN(LdnTarget, u8),
     LDRR(LdrrTarget, LdrrTarget),
+    LDA(LdaTarget),
+    LDFA(LdfaTarget),
     PUSH(StackTarget),
     POP(StackTarget),
     ADD(AddTarget),
@@ -788,6 +830,37 @@ pub enum Add16Target {
 }
 
 #[derive(Debug, Clone)]
+pub enum LdaTarget {
+    A,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+    BC,
+    DE,
+    HL,
+    Addr(u16),
+    Value(u8),
+}
+
+#[derive(Debug, Clone)]
+pub enum LdfaTarget {
+    A,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+    BC,
+    DE,
+    HL,
+    Addr(u16),
+}
+
+#[derive(Debug, Clone)]
 pub enum AddTarget {
     A,
     B,
@@ -797,7 +870,7 @@ pub enum AddTarget {
     H,
     L,
     HL,
-    Value(u16),
+    Value(u8),
 }
 
 #[derive(Debug, Clone)]
@@ -822,7 +895,7 @@ pub enum CpTarget {
     H,
     L,
     HL,
-    Value(u16),
+    Value(u8),
 }
 
 #[derive(Debug, Clone)]
@@ -835,7 +908,7 @@ pub enum SubTarget {
     H,
     L,
     HL,
-    Value(u16),
+    Value(u8),
 }
 
 #[derive(Debug, Clone)]
@@ -882,5 +955,5 @@ pub enum LogicTarget {
     H,
     L,
     HL,
-    Value(u16),
+    Value(u8),
 }
