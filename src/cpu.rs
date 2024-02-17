@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Debug, Default)]
+    #[derive(Debug, Clone, Default)]
     pub struct CpuFlags: u8 {
         const ZERO = 0b1000_0000;
         const SUBSTRACTION = 0b0100_0000;
@@ -145,6 +145,7 @@ impl Cpu {
             LdfaTarget::D => self.registers.d = self.registers.a,
             LdfaTarget::E => self.registers.e = self.registers.a,
             LdfaTarget::H => self.registers.h = self.registers.a,
+            LdfaTarget::L => self.registers.l = self.registers.a,
             LdfaTarget::BC => memory[self.registers.bc() as usize] = self.registers.a,
             LdfaTarget::DE => memory[self.registers.de() as usize] = self.registers.a,
             LdfaTarget::HL => memory[self.registers.hl() as usize] = self.registers.a,
@@ -160,18 +161,18 @@ impl Cpu {
             StackTarget::HL => self.registers.hl(),
         };
 
-        memory[self.sp] = ((value & 0xFF00) >> 8) as u8;
+        memory[self.registers.sp as usize] = ((value & 0xFF00) >> 8) as u8;
         self.registers.sp -= 1;
-        memory[self.sp] = (value & 0x00FF) as u8;
+        memory[self.registers.sp as usize] = (value & 0x00FF) as u8;
         self.registers.sp -= 1;
     }
 
     fn pop(&mut self, target: StackTarget, memory: &mut [u8]) {
         let mut value: u16 = 0;
         self.registers.sp += 1;
-        value += memory[self.sp] as u16;
+        value += memory[self.registers.sp as usize] as u16;
         self.registers.sp += 1;
-        value += (memory[self.sp] as u16) << 8;
+        value += (memory[self.registers.sp as usize] as u16) << 8;
     }
 
     fn add(&mut self, target: AddTarget, memory: &mut [u8]) {
@@ -267,7 +268,7 @@ impl Cpu {
                 self.registers.a = new_value;
             }
             AddTarget::Value(value) => {
-                let value = value + self.registers.f.contains(CpuFlags::CARRY) as u16;
+                let value = value + self.registers.f.contains(CpuFlags::CARRY) as u8;
                 let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
 
@@ -541,7 +542,7 @@ impl Cpu {
                 let value = self.registers.hl();
                 let (new_value, overflow) = value.overflowing_add(1);
 
-                let mut flags = self.registers.f;
+                let mut flags = self.registers.f.clone();
 
                 if new_value == 0 {
                     flags.set(CpuFlags::ZERO, true);
@@ -566,7 +567,7 @@ impl Cpu {
                 };
                 let (new_value, overflow) = value.overflowing_add(1);
 
-                let mut flags = self.registers.f;
+                let mut flags = self.registers.f.clone();
 
                 if new_value == 0 {
                     flags.set(CpuFlags::ZERO, true);
@@ -771,16 +772,16 @@ impl Cpu {
                 self.add(target, memory);
             }
             Instruction::ADC(target) => {
-                self.adc(target);
+                self.adc(target, memory);
             }
             Instruction::SUB(target) => {
-                self.sub(target);
+                self.sub(target, memory);
             }
             Instruction::SBC(target) => {
-                self.sbc(target);
+                self.sbc(target, memory);
             }
             Instruction::CP(target) => {
-                self.cp(target);
+                self.cp(target, memory);
             }
             Instruction::INC(target) => {
                 self.inc(target);
