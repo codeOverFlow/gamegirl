@@ -183,35 +183,37 @@ impl Cpu {
                 let mut flags = CpuFlags::empty();
 
                 if overflow {
-                    flags |= CpuFlags::CARRY;
+                    flags.set(CpuFlags::CARRY, true);
                 }
 
                 if new_value == 0 {
-                    flags |= CpuFlags::ZERO;
+                    flags.set(CpuFlags::ZERO, true);
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
-                    flags |= CpuFlags::HALF_CARRY;
+                if (self.registers.a <= 0xF || value <= 0xF) && new_value > 0xF {
+                    flags.set(CpuFlags::HALF_CARRY, true);
                 }
 
+                self.registers.f = flags;
                 self.registers.a = new_value;
             }
             AddTarget::Value(value) => {
-                let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
+                let (new_value, overflow) = self.registers.a.overflowing_add(value);
                 let mut flags = CpuFlags::empty();
 
                 if overflow {
-                    flags |= CpuFlags::CARRY;
+                    flags.set(CpuFlags::CARRY, true);
                 }
 
                 if new_value == 0 {
-                    flags |= CpuFlags::ZERO;
+                    flags.set(CpuFlags::ZERO, true);
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
-                    flags |= CpuFlags::HALF_CARRY;
+                if (self.registers.a <= 0xF || value <= 0xF) && new_value > 0xF {
+                    flags.set(CpuFlags::HALF_CARRY, true);
                 }
 
+                self.registers.f = flags;
                 self.registers.a = new_value;
             }
             other => {
@@ -229,17 +231,18 @@ impl Cpu {
                 let mut flags = CpuFlags::empty();
 
                 if overflow {
-                    flags |= CpuFlags::CARRY;
+                    flags.set(CpuFlags::CARRY, true);
                 }
 
                 if new_value == 0 {
-                    flags |= CpuFlags::ZERO;
+                    flags.set(CpuFlags::ZERO, true);
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
-                    flags |= CpuFlags::HALF_CARRY;
+                if (self.registers.a <= 0xF || value <= 0xF) && new_value > 0xF {
+                    flags.set(CpuFlags::HALF_CARRY, true);
                 }
 
+                self.registers.f = flags;
                 self.registers.a = new_value;
             }
         }
@@ -957,4 +960,60 @@ pub enum LogicTarget {
     L,
     HL,
     Value(u8),
+}
+
+#[cfg(test)]
+mod tests {
+    use bitflags::Flags;
+
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADD(AddTarget::Value(5)), &mut memory);
+        assert_eq!(5, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_add_zero() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADD(AddTarget::Value(0)), &mut memory);
+        assert_eq!(0, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_add_carry() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADD(AddTarget::Value(1)), &mut memory);
+        cpu.execute(Instruction::ADD(AddTarget::Value(255)), &mut memory);
+        assert_eq!(0, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_add_half_carry() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADD(AddTarget::Value(16)), &mut memory);
+        assert_eq!(16, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
 }
