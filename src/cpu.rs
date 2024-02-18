@@ -251,8 +251,7 @@ impl Cpu {
     fn adc(&mut self, target: AddTarget, memory: &mut [u8]) {
         match target {
             AddTarget::HL => {
-                let value = memory[self.registers.hl() as usize]
-                    + self.registers.f.contains(CpuFlags::CARRY) as u8;
+                let value = memory[self.registers.hl() as usize];
                 let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
                 let mut flags = CpuFlags::empty();
 
@@ -264,15 +263,15 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a <= 0xF || value <= 0xF) && new_value > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
-                self.registers.a = new_value;
+                self.registers.f = flags;
+                self.registers.a = new_value + self.registers.f.contains(CpuFlags::CARRY) as u8;
             }
             AddTarget::Value(value) => {
-                let value = value + self.registers.f.contains(CpuFlags::CARRY) as u8;
-                let (new_value, overflow) = self.registers.a.overflowing_add((value & 0xFF) as u8);
+                let (new_value, overflow) = self.registers.a.overflowing_add(value);
                 let mut flags = CpuFlags::empty();
 
                 if overflow {
@@ -283,11 +282,12 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a <= 0xF || value <= 0xF) && new_value > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
-                self.registers.a = new_value;
+                self.registers.f = flags;
+                self.registers.a = new_value + self.registers.f.contains(CpuFlags::CARRY) as u8;
             }
             other => {
                 let value = match other {
@@ -300,7 +300,6 @@ impl Cpu {
                     AddTarget::L => self.registers.l,
                     _ => unreachable!("Other targets must be checked before."),
                 };
-                let value = value + self.registers.f.contains(CpuFlags::CARRY) as u8;
                 let (new_value, overflow) = self.registers.a.overflowing_add(value);
                 let mut flags = CpuFlags::empty();
 
@@ -312,11 +311,12 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a <= 0xF || value <= 0xF) && new_value > 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
-                self.registers.a = new_value;
+                self.registers.f = flags;
+                self.registers.a = new_value + self.registers.f.contains(CpuFlags::CARRY) as u8;
             }
         }
     }
@@ -1010,6 +1010,55 @@ mod tests {
         let mut cpu = Cpu::default();
         let mut memory = [0; 8192];
         cpu.execute(Instruction::ADD(AddTarget::Value(16)), &mut memory);
+        assert_eq!(16, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_adc() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADC(AddTarget::Value(5)), &mut memory);
+        assert_eq!(5, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_adc_zero() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADC(AddTarget::Value(0)), &mut memory);
+        assert_eq!(0, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_adc_carry() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADC(AddTarget::Value(1)), &mut memory);
+        cpu.execute(Instruction::ADC(AddTarget::Value(255)), &mut memory);
+        assert_eq!(1, cpu.registers.a);
+        assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_adc_half_carry() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::ADC(AddTarget::Value(16)), &mut memory);
         assert_eq!(16, cpu.registers.a);
         assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
         assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
