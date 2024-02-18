@@ -337,10 +337,11 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a > 0xF || value > 0xF) && new_value <= 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
+                self.registers.f = flags;
                 self.registers.a = new_value;
             }
             SubTarget::Value(value) => {
@@ -356,10 +357,11 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a > 0xF || value > 0xF) && new_value <= 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
+                self.registers.f = flags;
                 self.registers.a = new_value;
             }
             other => {
@@ -385,10 +387,11 @@ impl Cpu {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) - ((value & 0xF) as u8) > 0xF {
+                if (self.registers.a > 0xF || value > 0xF) && new_value <= 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
 
+                self.registers.f = flags;
                 self.registers.a = new_value;
             }
         }
@@ -1061,6 +1064,56 @@ mod tests {
         cpu.execute(Instruction::ADC(AddTarget::Value(16)), &mut memory);
         assert_eq!(16, cpu.registers.a);
         assert!(!cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_sub() {
+        let mut cpu = Cpu::default();
+        cpu.registers.a = 5;
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::SUB(SubTarget::Value(1)), &mut memory);
+        assert_eq!(4, cpu.registers.a);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_sub_zero() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::SUB(SubTarget::Value(0)), &mut memory);
+        assert_eq!(0, cpu.registers.a);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_sub_carry() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::SUB(SubTarget::Value(1)), &mut memory);
+        assert_eq!(255, cpu.registers.a);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_sub_half_carry() {
+        let mut cpu = Cpu::default();
+        cpu.registers.a = 16;
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::SUB(SubTarget::Value(1)), &mut memory);
+        assert_eq!(15, cpu.registers.a);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
         assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
         assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
         assert!(cpu.registers.f.contains(CpuFlags::HALF_CARRY));
