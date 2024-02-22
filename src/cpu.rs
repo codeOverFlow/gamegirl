@@ -477,42 +477,47 @@ impl Cpu {
     fn cp(&mut self, target: CpTarget, memory: &mut [u8]) {
         match target {
             CpTarget::HL => {
-                let value = memory[self.registers.hl() as usize];
-                let (new_value, overflow) = self.registers.a.overflowing_sub(value);
+                let n = memory[self.registers.hl() as usize];
+                let a = self.registers.a;
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
 
-                if overflow {
+                if a < n {
                     flags |= CpuFlags::CARRY;
                 }
 
-                if new_value == 0 {
+                if n == a {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if a > n && a > 0xF && a - n <= 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
+
+                self.registers.f = flags;
             }
-            CpTarget::Value(value) => {
-                let (new_value, overflow) = self.registers.a.overflowing_sub(value);
+            CpTarget::Addr(value) => {
+                let n = memory[value as usize];
+                let a = self.registers.a;
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
 
-                if overflow {
+                if a < n {
                     flags |= CpuFlags::CARRY;
                 }
 
-                if new_value == 0 {
+                if n == a {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if a > n && a > 0xF && a - n <= 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
+
+                self.registers.f = flags;
             }
             other => {
-                let value = match other {
+                let n = match other {
                     CpTarget::A => self.registers.a,
                     CpTarget::B => self.registers.b,
                     CpTarget::C => self.registers.c,
@@ -522,22 +527,23 @@ impl Cpu {
                     CpTarget::L => self.registers.l,
                     _ => unreachable!("Other targets must be checked before."),
                 };
-                let (mut new_value, overflow) = self.registers.a.overflowing_sub(value);
+                let a = self.registers.a;
                 let mut flags = CpuFlags::empty();
                 flags |= CpuFlags::SUBSTRACTION;
 
-                if overflow {
+                if a < n {
                     flags |= CpuFlags::CARRY;
-                    new_value += 1;
                 }
 
-                if new_value == 0 {
+                if n == a {
                     flags |= CpuFlags::ZERO;
                 }
 
-                if (self.registers.a & 0xF) + ((value & 0xF) as u8) > 0xF {
+                if a > n && a > 0xF && a - n <= 0xF {
                     flags |= CpuFlags::HALF_CARRY;
                 }
+
+                self.registers.f = flags;
             }
         }
     }
@@ -902,7 +908,7 @@ pub enum CpTarget {
     H,
     L,
     HL,
-    Value(u8),
+    Addr(u8),
 }
 
 #[derive(Debug, Clone)]
