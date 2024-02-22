@@ -1,3 +1,4 @@
+#![allow(dead_code, unused)]
 use bitflags::bitflags;
 
 bitflags! {
@@ -1119,6 +1120,54 @@ mod tests {
         let mut memory = [0; 8192];
         cpu.execute(Instruction::SUB(SubTarget::Value(1)), &mut memory);
         assert_eq!(15, cpu.registers.a);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_cp() {
+        let mut cpu = Cpu::default();
+        cpu.registers.a = 5;
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::CP(CpTarget::Addr(0xF)), &mut memory);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_cp_zero() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        cpu.execute(Instruction::CP(CpTarget::A), &mut memory);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_cp_carry() {
+        let mut cpu = Cpu::default();
+        let mut memory = [0; 8192];
+        memory[0xF] = 5;
+        cpu.execute(Instruction::CP(CpTarget::Addr(0xF)), &mut memory);
+        assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
+        assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
+        assert!(cpu.registers.f.contains(CpuFlags::CARRY));
+        assert!(!cpu.registers.f.contains(CpuFlags::HALF_CARRY));
+    }
+
+    #[test]
+    fn test_cp_half_carry() {
+        let mut cpu = Cpu::default();
+        cpu.registers.a = 16;
+        let mut memory = [0; 8192];
+        memory[0xF] = 5;
+        cpu.execute(Instruction::CP(CpTarget::Addr(0xF)), &mut memory);
         assert!(cpu.registers.f.contains(CpuFlags::SUBSTRACTION));
         assert!(!cpu.registers.f.contains(CpuFlags::ZERO));
         assert!(!cpu.registers.f.contains(CpuFlags::CARRY));
