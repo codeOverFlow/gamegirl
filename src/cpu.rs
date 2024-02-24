@@ -22,7 +22,7 @@ pub struct Registers {
     f: CpuFlags,
     h: u8,
     l: u8,
-    sp: u16,
+    sp: i16,
     pc: u16,
 }
 
@@ -761,6 +761,29 @@ impl Cpu {
         self.registers.set_hl(new_value);
     }
 
+    fn add_sp(&mut self, value: i8) {
+        let (new_value, overflow) = if value > 0 {
+            self.registers.sp.overflowing_add(value as _)
+        } else {
+            self.registers.sp.overflowing_sub(value as _)
+        };
+        let mut flags = CpuFlags::empty();
+
+        if overflow {
+            flags |= CpuFlags::CARRY;
+        }
+
+        if (self.registers.hl() <= 0x0FFF || value <= 0x0FFF) && new_value > 0x0FFF {
+            flags |= CpuFlags::HALF_CARRY;
+        }
+        if (self.registers.hl() > 0x0FFF || value > 0x0FFF) && new_value <= 0x0FFF {
+            flags |= CpuFlags::HALF_CARRY;
+        }
+
+        self.registers.f = flags;
+        self.registers.sp = new_value;
+    }
+
     pub fn execute(&mut self, instruction: Instruction, memory: &mut [u8]) {
         match instruction {
             Instruction::LDN(target, value) => {
@@ -811,6 +834,9 @@ impl Cpu {
             Instruction::ADD16(target) => {
                 self.add_hl(target);
             }
+            Instruction::ADDSP(value) => {
+                self.add_sp(value);
+            }
         }
     }
 }
@@ -833,6 +859,7 @@ pub enum Instruction {
     OR(LogicTarget),
     XOR(LogicTarget),
     ADD16(Add16Target),
+    ADDSP(i8),
 }
 
 #[derive(Debug, Clone)]
