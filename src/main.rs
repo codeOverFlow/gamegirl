@@ -2,6 +2,7 @@
 
 use crate::cpu::{Cpu, Instruction, Registers};
 mod cpu;
+mod memory_map;
 
 fn main() {
     let mut memory = [0; 8192];
